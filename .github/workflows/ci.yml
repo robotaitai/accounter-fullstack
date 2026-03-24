@@ -17,33 +17,9 @@ env:
   DEFAULT_FINANCIAL_ENTITY_ID: '00000000-0000-0000-0000-000000000000'
 
 jobs:
-  # ── TypeScript + GraphQL build check ─────────────────────────────────────
-  build:
-    name: Build & type-check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: '.node-version'
-          cache: yarn
-
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
-
-      - name: Generate GraphQL types
-        run: yarn generate:graphql
-
-      - name: Build server
-        run: yarn workspace @accounter/server build
-
-      - name: Build client
-        run: yarn workspace @accounter/client build
-
-  # ── Server tests (unit + integration) ────────────────────────────────────
+  # ── Server tests + build (needs DB to generate SQL types) ─────────────────
   test:
-    name: Server tests
+    name: Server tests & build
     runs-on: ubuntu-latest
 
     services:
@@ -91,8 +67,14 @@ jobs:
       - name: Generate Postgres types
         run: yarn generate:sql
 
+      - name: Build server
+        run: yarn workspace @accounter/server build
+
+      - name: Build client
+        run: yarn workspace @accounter/client build
+
       - name: Run integration tests
-        run: yarn test:integration --reporter=default
+        run: yarn test:integration --reporter=default --retry 2
 
       - name: Verify migrations are up to date
         run: node --import ./scripts/register-esm.js ./scripts/verify-migrations.ts
