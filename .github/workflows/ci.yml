@@ -67,9 +67,6 @@ jobs:
       - name: Generate Postgres types
         run: yarn generate:sql
 
-      - name: Build server
-        run: yarn workspace @accounter/server build
-
       - name: Build client
         run: yarn workspace @accounter/client build
 
