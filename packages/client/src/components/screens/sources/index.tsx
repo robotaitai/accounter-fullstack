@@ -557,7 +557,7 @@ function SourceCard({
   const [{ fetching: saving }, saveCreds] = useMutation(SAVE_CREDENTIALS_MUTATION);
   const [{ fetching: clearing }, clearCreds] = useMutation(CLEAR_CREDENTIALS_MUTATION);
   const [{ fetching: deleting }, deleteSource] = useMutation(DELETE_SOURCE_MUTATION);
-  const [{ fetching: syncing }, syncPriority] = useMutation(SYNC_PRIORITY_MUTATION);
+  const [{ fetching: syncing }] = useMutation(SYNC_PRIORITY_MUTATION);
   const [{ fetching: testing }, testPriority] = useMutation(TEST_PRIORITY_MUTATION);
   const [{ fetching: triggering }, triggerSync] = useMutation(TRIGGER_SOURCE_SYNC_MUTATION);
   const [editing, setEditing] = useState(false);

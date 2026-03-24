@@ -404,13 +404,14 @@ export function DashboardPage(): JSX.Element {
   const now = new Date();
   const monthLabel = now.toLocaleString('default', { month: 'long', year: 'numeric' });
 
-  const banks = (stats?.sources ?? []).filter(s =>
+  const sources: SourceRow[] = stats?.sources ?? [];
+  const banks = sources.filter(s =>
     ['MIZRAHI', 'HAPOALIM', 'DISCOUNT', 'LEUMI'].includes(s.provider),
   );
-  const cards = (stats?.sources ?? []).filter(s =>
+  const cards = sources.filter(s =>
     ['ISRACARD', 'AMEX', 'CAL', 'MAX'].includes(s.provider),
   );
-  const integrations = (stats?.sources ?? []).filter(
+  const integrations = sources.filter(
     s => !['MIZRAHI', 'HAPOALIM', 'DISCOUNT', 'LEUMI', 'ISRACARD', 'AMEX', 'CAL', 'MAX'].includes(s.provider),
   );
 

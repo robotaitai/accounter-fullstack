@@ -465,7 +465,6 @@ function ReviewStep({
   const { workspace } = useWorkspace();
   const [{ data }] = useQuery({ query: SOURCE_CONNECTIONS_QUERY });
   const sources: SourceItem[] = data?.sourceConnections ?? [];
-  const activeSources = sources.filter(s => s.status === 'ACTIVE');
 
   return (
     <Card className="max-w-lg mx-auto">
