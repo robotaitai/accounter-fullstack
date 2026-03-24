@@ -214,6 +214,7 @@ export class AuthContextProvider {
         try {
           const userInfoResponse = await fetch(`https://${this.env.auth0.domain}/userinfo`, {
             headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(3000),
           });
           if (userInfoResponse.ok) {
             const userInfo = (await userInfoResponse.json()) as Record<string, unknown>;
