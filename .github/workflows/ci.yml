@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  NODE_NO_WARNINGS: true
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_HOST: 127.0.0.1
+  POSTGRES_PORT: 5432
+  POSTGRES_DB: accounter_test
+  POSTGRES_SSL: '0'
+  DEFAULT_FINANCIAL_ENTITY_ID: '00000000-0000-0000-0000-000000000000'
+
+jobs:
+  # ── TypeScript + GraphQL build check ─────────────────────────────────────
+  build:
+    name: Build & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate GraphQL types
+        run: yarn generate:graphql
+
+      - name: Build server
+        run: yarn workspace @accounter/server build
+
+      - name: Build client
+        run: yarn workspace @accounter/client build
+
+  # ── Server tests (unit + integration) ────────────────────────────────────
+  test:
+    name: Server tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: accounter_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Wait for Postgres
+        run: |
+          for i in {1..20}; do
+            pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0
+            echo "Waiting for Postgres..."
+            sleep 2
+          done
+          echo "Postgres failed to start" >&2
+          exit 1
+
+      - name: Run migrations
+        run: yarn workspace @accounter-helper/migrations migration:run
+
+      - name: Generate GraphQL types
+        run: yarn generate:graphql
+
+      - name: Generate Postgres types
+        run: yarn generate:sql
+
+      - name: Run integration tests
+        run: yarn test:integration --reporter=default
+
+      - name: Verify migrations are up to date
+        run: node --import ./scripts/register-esm.js ./scripts/verify-migrations.ts
+
+  # ── GraphQL schema validation (no external service needed) ────────────────
+  graphql:
+    name: Validate GraphQL schema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate GraphQL types
+        run: yarn generate:graphql
+
+      - name: Validate GraphQL schema vs client operations
+        run: yarn graphql:validate
