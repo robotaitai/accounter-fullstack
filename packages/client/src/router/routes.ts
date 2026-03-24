@@ -8,6 +8,7 @@
 
 export const ROUTES = {
   HOME: '/',
+  DASHBOARD: '/',
   LOGIN: '/login',
   AUTH_CALLBACK: '/auth/callback',
   ACCEPT_INVITATION: (token = ':token') => `/accept-invitation/${token}`,
@@ -79,6 +80,9 @@ export const ROUTES = {
   TAGS: '/tags',
   TAX_CATEGORIES: '/tax-categories',
   SORT_CODES: '/sort-codes',
+  SOURCES: '/sources',
+  SETTINGS: '/settings',
+  ONBOARDING: '/onboarding',
 } as const;
 
 /**
