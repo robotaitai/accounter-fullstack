@@ -19,6 +19,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -63,6 +64,37 @@ const DASHBOARD_QUERY = `
     }
     workspaceSettings {
       companyName
+    }
+  }
+`;
+
+const INCOME_EXPENSE_QUERY = `
+  query DashboardFinancialOverview($filters: IncomeExpenseChartFilters!) {
+    incomeExpenseChart(filters: $filters) {
+      currency
+      monthlyData {
+        date
+        income { raw formatted }
+        expense { raw formatted }
+        balance { raw formatted }
+      }
+    }
+  }
+`;
+
+const ATTENTION_QUERY = `
+  query DashboardAttention {
+    missingInvoices: allCharges(page: 1, limit: 1, filters: { withoutInvoice: true }) {
+      pageInfo { totalPages }
+    }
+    missingReceipts: allCharges(page: 1, limit: 1, filters: { withoutReceipt: true }) {
+      pageInfo { totalPages }
+    }
+    unapproved: allCharges(page: 1, limit: 1, filters: { accountantStatus: UNAPPROVED }) {
+      pageInfo { totalPages }
+    }
+    missingInfo: chargesWithMissingRequiredInfo(page: 1, limit: 1) {
+      pageInfo { totalPages }
     }
   }
 `;
@@ -393,6 +425,282 @@ function AllSourcesMonthlyChart({ sources }: { sources: SourceRow[] }): JSX.Elem
 }
 
 // ---------------------------------------------------------------------------
+// formatAmount
+// ---------------------------------------------------------------------------
+
+function formatAmount(raw: number, currency = 'ILS'): string {
+  const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '₪';
+  const abs = Math.abs(raw);
+  let s: string;
+  if (abs >= 1_000_000) s = `${(abs / 1_000_000).toFixed(1)}M`;
+  else if (abs >= 1_000) s = `${(abs / 1_000).toFixed(0)}k`;
+  else s = abs.toFixed(0);
+  return `${raw < 0 ? '-' : ''}${sym}${s}`;
+}
+
+// ---------------------------------------------------------------------------
+// FinancialOverviewSection
+// ---------------------------------------------------------------------------
+
+function FinancialOverviewSection(): JSX.Element {
+  const now = new Date();
+  const toDate = now.toISOString().slice(0, 10);
+  const fromDate = new Date(now.getFullYear() - 1, now.getMonth(), 1).toISOString().slice(0, 10);
+
+  const [{ data, fetching }] = useQuery({
+    query: INCOME_EXPENSE_QUERY,
+    variables: { filters: { fromDate, toDate } },
+  });
+
+  const monthly = data?.incomeExpenseChart?.monthlyData ?? [];
+  const currency = data?.incomeExpenseChart?.currency ?? 'ILS';
+  const currentYear = now.getFullYear().toString();
+
+  const ytdIncome = monthly
+    .filter((m: { date: string }) => m.date.startsWith(currentYear))
+    .reduce((s: number, m: { income: { raw: number } }) => s + m.income.raw, 0);
+  const ytdExpense = monthly
+    .filter((m: { date: string }) => m.date.startsWith(currentYear))
+    .reduce((s: number, m: { expense: { raw: number } }) => s + m.expense.raw, 0);
+  const ytdNet = ytdIncome - ytdExpense;
+
+  const chartData = monthly.map((m: { date: string; income: { raw: number }; expense: { raw: number } }) => ({
+    label: fmtMonth(m.date.slice(0, 7)),
+    Income: m.income.raw,
+    Expense: -m.expense.raw,
+  }));
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+          Financial Overview
+        </h2>
+        <Link
+          to={ROUTES.CHARTS.MONTHLY_INCOME_EXPENSE}
+          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+        >
+          Full chart <ArrowRight size={12} />
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+          <div className="text-xs text-emerald-600 font-medium mb-1">YTD Income</div>
+          <div className="text-xl font-semibold text-emerald-800">
+            {fetching ? '—' : formatAmount(ytdIncome, currency)}
+          </div>
+        </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="text-xs text-red-600 font-medium mb-1">YTD Expenses</div>
+          <div className="text-xl font-semibold text-red-800">
+            {fetching ? '—' : formatAmount(ytdExpense, currency)}
+          </div>
+        </div>
+        <div
+          className={`rounded-lg border p-4 ${
+            ytdNet >= 0 ? 'border-blue-200 bg-blue-50' : 'border-amber-200 bg-amber-50'
+          }`}
+        >
+          <div
+            className={`text-xs font-medium mb-1 ${ytdNet >= 0 ? 'text-blue-600' : 'text-amber-600'}`}
+          >
+            Net {currentYear}
+          </div>
+          <div
+            className={`text-xl font-semibold ${ytdNet >= 0 ? 'text-blue-800' : 'text-amber-800'}`}
+          >
+            {fetching ? '—' : formatAmount(ytdNet, currency)}
+          </div>
+        </div>
+      </div>
+
+      {chartData.length > 0 && (
+        <Card>
+          <CardContent className="pt-4">
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 4, right: 8, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(v: unknown) => formatAmount(Number(v), currency)}
+                  />
+                  <Tooltip
+                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    formatter={(v: unknown, name: string) => [
+                      formatAmount(Math.abs(Number(v)), currency),
+                      name,
+                    ]}
+                  />
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+                    formatter={(value: string) => (
+                      <span className="text-slate-600">{value}</span>
+                    )}
+                  />
+                  <Bar
+                    dataKey="Income"
+                    fill="#10b981"
+                    radius={[2, 2, 0, 0]}
+                    maxBarSize={18}
+                    stackId="stack"
+                  />
+                  <Bar
+                    dataKey="Expense"
+                    fill="#ef4444"
+                    radius={[2, 2, 0, 0]}
+                    maxBarSize={18}
+                    stackId="stack"
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {!fetching && chartData.length === 0 && (
+        <div className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm text-slate-400">
+          No financial data yet. Import invoices or sync your sources to see income and expense trends.
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// NeedsAttentionSection
+// ---------------------------------------------------------------------------
+
+interface AttentionItem {
+  label: string;
+  count: number;
+  href: string;
+  description: string;
+  severity: 'high' | 'medium';
+}
+
+function AttentionCard({
+  item,
+  fetching,
+}: {
+  item: AttentionItem;
+  fetching: boolean;
+}): JSX.Element {
+  const isClean = item.count === 0;
+  const borderCls = isClean
+    ? 'border-emerald-200 bg-emerald-50 hover:border-emerald-300'
+    : item.severity === 'high'
+      ? 'border-red-200 bg-red-50 hover:border-red-300'
+      : 'border-amber-200 bg-amber-50 hover:border-amber-300';
+  const countCls = isClean
+    ? 'text-emerald-700'
+    : item.severity === 'high'
+      ? 'text-red-700'
+      : 'text-amber-700';
+
+  return (
+    <Link
+      to={item.href}
+      className={`rounded-lg border p-4 flex items-center justify-between group transition-shadow hover:shadow-sm ${borderCls}`}
+    >
+      <div>
+        <div className={`text-2xl font-semibold ${countCls}`}>
+          {fetching ? '—' : isClean ? 'All clear' : item.count.toLocaleString()}
+        </div>
+        <div className="text-sm font-medium text-slate-700 mt-0.5">{item.label}</div>
+        <div className="text-xs text-slate-400 mt-0.5">{item.description}</div>
+      </div>
+      <ArrowRight
+        size={16}
+        className="text-slate-300 group-hover:text-slate-500 transition-colors shrink-0"
+      />
+    </Link>
+  );
+}
+
+function NeedsAttentionSection(): JSX.Element {
+  const [{ data, fetching }] = useQuery({ query: ATTENTION_QUERY });
+
+  const missingInvoices = data?.missingInvoices?.pageInfo?.totalPages ?? 0;
+  const missingReceipts = data?.missingReceipts?.pageInfo?.totalPages ?? 0;
+  const unapproved = data?.unapproved?.pageInfo?.totalPages ?? 0;
+  const missingInfo = data?.missingInfo?.pageInfo?.totalPages ?? 0;
+  const totalIssues = missingInvoices + missingReceipts + unapproved + missingInfo;
+
+  const makeUrl = (filter: Record<string, unknown>) =>
+    `${ROUTES.CHARGES.ALL}?chargesFilters=${encodeURIComponent(JSON.stringify(filter))}`;
+
+  const items: AttentionItem[] = [
+    {
+      label: 'Missing Invoices',
+      count: missingInvoices,
+      href: makeUrl({ withoutInvoice: true }),
+      description: 'Charges without an invoice document',
+      severity: 'high',
+    },
+    {
+      label: 'Missing Receipts',
+      count: missingReceipts,
+      href: makeUrl({ withoutReceipt: true }),
+      description: 'Charges without a receipt',
+      severity: 'medium',
+    },
+    {
+      label: 'Awaiting Approval',
+      count: unapproved,
+      href: makeUrl({ accountantStatus: 'UNAPPROVED' }),
+      description: 'Not yet approved by accountant',
+      severity: 'medium',
+    },
+    {
+      label: 'Missing Information',
+      count: missingInfo,
+      href: ROUTES.CHARGES.MISSING_INFO,
+      description: 'Charges with incomplete required data',
+      severity: 'high',
+    },
+  ];
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide">
+            Needs Attention
+          </h2>
+          {!fetching && totalIssues > 0 && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+              {totalIssues.toLocaleString()} total
+            </span>
+          )}
+        </div>
+        <Link
+          to={ROUTES.CHARGES.MISSING_INFO}
+          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+        >
+          View all <ArrowRight size={12} />
+        </Link>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {items.map(item => (
+          <AttentionCard key={item.label} item={item} fetching={fetching} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -502,6 +810,12 @@ export function DashboardPage(): JSX.Element {
           />
         </div>
       </section>
+
+      {/* Financial Overview — income vs expense chart + YTD KPIs */}
+      <FinancialOverviewSection />
+
+      {/* Needs Attention — work queue counts */}
+      <NeedsAttentionSection />
 
       {/* Sources */}
       <section>
